@@ -1,5 +1,0 @@
-# STORE API KEY
-token = 'H0ETBr6Ne7rsdqhnEuFmvvpaL43jdMFx'
-
-# STORE SECONDARY KEY FOR ROTATION
-token2 = 'K601sn2lmQQVnEhffXiyi8qe4h09s5ij'
