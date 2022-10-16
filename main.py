@@ -25,7 +25,7 @@ def data_transformation(is_export_to_csv: bool = True, is_upload_to_gdrive: bool
     final_df['offer_date'] = pd.to_datetime(full_df.date)
     final_df['commodity'] = np.where(full_df['Market'] == 'Corn', 'CORN',
                             np.where(full_df['Market'].isin(['Soybean', 'Soymeal']), 'SBM', 'Others'))
-    final_df['comm'] = full_df['name'].apply(lambda name: re.sub('M[1-9]', '', name))
+    final_df['comm'] = full_df['name'].apply(lambda name: re.sub('M[1-9] ', '', name))
     final_df['currency'] = full_df['Currency']
     final_df['m_month'] = np.where(full_df['Structure'] == 'SP', 'M0', full_df['Structure'])
     final_df['origin'] = np.where(full_df['Name'].str.contains('Argentina'), 'ARG', 'BRZ')
