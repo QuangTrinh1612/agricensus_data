@@ -12,10 +12,12 @@ def write_to_csv(df: pd.DataFrame, feed_type: str):
     file_name_dict = {  
         'daily_export': 'DailyExport',
         'historical_export': 'HistoricalExport',
-        'specs_export': 'SpecsExport'
+        'specs_export': 'SpecsExport',
+
+        'test': 'Test'
     }
     
-    file_path = Path(f'Data/{file_name_dict[feed_type]}_{dt.today().year*10000+dt.today().month*100+dt.today().day}.csv')  
+    file_path = Path(f'Data/{file_name_dict[feed_type]}_{dt.today().year*10000+dt.today().month*100+dt.today().day}.csv')
     file_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(file_path, index=False)
 
@@ -61,6 +63,7 @@ def data_transformation(is_export_to_csv: bool = True, is_upload_to_gdrive: bool
     final_df['PRICE_TYPE'] = 'CNF'
     final_df['NOTE'] = ''
     final_df['PRICE'] = full_df['value']
+    final_df['LETTER'] = full_df['letter']
     
     # 20221017 - Change Source Data
     # final_df['unit_price'] = np.where(full_df['comm'].str.contains('/mt|/st'), 'flat',
@@ -71,22 +74,31 @@ def data_transformation(is_export_to_csv: bool = True, is_upload_to_gdrive: bool
                             np.where(full_df['Units'] == 'Metric tonnes', 'flat',
                             np.where(full_df['Units'] == 'Short tons', 'flat', 'Unknown'))))
 
-    final_df['SHIPMENT'] = final_df.apply(lambda row: row['DATE OFFER'] + pd.DateOffset(months=1) if row['M_MONTH'] == 'M0' or row['M_MONTH'] == 'M1' else (
-                                                        row['DATE OFFER'] + pd.DateOffset(months=2) if row['M_MONTH'] == 'M2' else (
-                                                        row['DATE OFFER'] + pd.DateOffset(months=3) if row['M_MONTH'] == 'M3' else (
-                                                        row['DATE OFFER'] + pd.DateOffset(months=4) if row['M_MONTH'] == 'M4' else (
-                                                        row['DATE OFFER'] + pd.DateOffset(months=5) if row['M_MONTH'] == 'M5' else (
-                                                        row['DATE OFFER'] + pd.DateOffset(months=6) if row['M_MONTH'] == 'M6' else (
-                                                        row['DATE OFFER'] + pd.DateOffset(months=7) if row['M_MONTH'] == 'M7' else (
-                                                        row['DATE OFFER'] + pd.DateOffset(months=8) if row['M_MONTH'] == 'M8' else row['DATE OFFER'] + pd.DateOffset(months=9)))))))),
-                                            axis=1)
+    final_df['SHIPMENT'] = pd.to_datetime('01-' + full_df['shipment_delivery_month'] + full_df['date'].str.slice(0,4))
+    final_df.loc[final_df['SHIPMENT'] < final_df['DATE OFFER'], 'SHIPMENT'] = final_df['SHIPMENT'] + pd.DateOffset(years=1)
+
+    # REPLACE WITH SHIPMENT_DELIVERY_MONTH DIRECTLY
+    # final_df['SHIPMENT'] = final_df.apply(lambda row: row['DATE OFFER'] + pd.DateOffset(months=1) if 'M0' in row['M_MONTH'] or 'M1' in row['M_MONTH'] else (
+    #                                                     row['DATE OFFER'] + pd.DateOffset(months=2) if 'M2' in row['M_MONTH'] else (
+    #                                                     row['DATE OFFER'] + pd.DateOffset(months=3) if 'M3' in row['M_MONTH'] else (
+    #                                                     row['DATE OFFER'] + pd.DateOffset(months=4) if 'M4' in row['M_MONTH'] else (
+    #                                                     row['DATE OFFER'] + pd.DateOffset(months=5) if 'M5' in row['M_MONTH'] else (
+    #                                                     row['DATE OFFER'] + pd.DateOffset(months=6) if 'M6' in row['M_MONTH'] else (
+    #                                                     row['DATE OFFER'] + pd.DateOffset(months=7) if 'M7' in row['M_MONTH'] else (
+    #                                                     row['DATE OFFER'] + pd.DateOffset(months=8) if 'M8' in row['M_MONTH'] else row['DATE OFFER'] + pd.DateOffset(months=9)))))))),
+    #                                         axis=1)
 
     final_df['DELIVERY'] = final_df['SHIPMENT'] + pd.DateOffset(months=2)
 
+    # REORDER COLUMN IN FINAL DATAFRAME
+    final_df = final_df[['DATE OFFER', 'SELLER', 'COMMODITY', 'ORIGIN', 'SHIPMENT', 'DELIVERY',
+                        'REGION', 'M_MONTH', 'PRICE_TYPE', 'NOTE', 'UNIT PRICE', 'PRICE', 'COMM', 'CURRENCY', 'LETTER']]
+
     if is_export_to_csv == True:
-        write_to_csv(final_df, 'daily_export')
         write_to_csv(final_df, 'historical_export')
+        # write_to_csv(final_df, 'daily_export')
         # write_to_csv(specs_df, 'specs_export')
+        # write_to_csv(full_df, 'test')
 
     return final_df
 
