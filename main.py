@@ -1,5 +1,6 @@
 import agricensus_api
 import yahoo_finance_api
+from upload_to_gdrive import upload_file_to_gdrive
 import config
 import pandas as pd
 import numpy as np
@@ -7,9 +8,7 @@ import re
 from datetime import date as dt
 from pathlib import Path  
 
-def write_to_csv(df: pd.DataFrame, feed_type: str):
-    
-    # Based on feed_type to get file_name
+def get_file_name(feed_type: str) -> str:
     file_name_dict = {  
         'fw': 'FWHistoricalExport',
         'freight': 'freightHistoricalExport',
@@ -17,9 +16,13 @@ def write_to_csv(df: pd.DataFrame, feed_type: str):
         'fxrate': 'FXRateExport',
         'test': 'TestExport'
     }
-    
+
     file_path = Path(f'Data/{file_name_dict[feed_type]}_{dt.today().year*10000+dt.today().month*100+dt.today().day}.csv')
     file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    return file_path
+
+def write_to_csv(df: pd.DataFrame, file_path: str):
     df.to_csv(file_path, index=False)
 
 def data_transformation(is_export_to_csv: bool = True, is_upload_to_gdrive: bool = True) -> pd.DataFrame:
@@ -129,14 +132,22 @@ def data_transformation(is_export_to_csv: bool = True, is_upload_to_gdrive: bool
     final_df = final_df[['DATE OFFER', 'SELLER', 'COMMODITY', 'ORIGIN', 'SHIPMENT', 'DELIVERY',
                         'REGION', 'M_MONTH', 'PRICE_TYPE', 'NOTE', 'UNIT PRICE', 'PRICE', 'COMM', 'CURRENCY', 'LETTER', 'FULL_M_MONTH', 'INCOTERM']]
 
+    fw_file_path = get_file_name('fw')
+    freigth_file_path = get_file_name('freight')
+    specs_file_path = get_file_name('specs')
+    fx_rate_file_path = get_file_name('fxrate')
+
     if is_export_to_csv == True:
-        write_to_csv(final_df[final_df['COMMODITY'] != 'FREIGHT'], 'fw')
-        write_to_csv(final_df[final_df['COMMODITY'] == 'FREIGHT'], 'freight')
-        write_to_csv(specs_df, 'specs')
-        write_to_csv(yahoo_finance_api.get_fx_rate(), 'fxrate')
+        write_to_csv(final_df[final_df['COMMODITY'] != 'FREIGHT'], fw_file_path)
+        write_to_csv(final_df[final_df['COMMODITY'] == 'FREIGHT'], freigth_file_path)
+        write_to_csv(specs_df, specs_file_path)
+        write_to_csv(yahoo_finance_api.get_fx_rate(), fx_rate_file_path)
         # write_to_csv(full_df, 'test')
 
+    if is_upload_to_gdrive == True:
+        upload_file_to_gdrive(fw_file_path)
+    
     return final_df
 
 if __name__ == '__main__':
-    data_transformation(is_export_to_csv = True)
+    data_transformation(is_export_to_csv = True, is_upload_to_gdrive = True)

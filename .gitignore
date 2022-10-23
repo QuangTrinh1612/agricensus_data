@@ -7,3 +7,5 @@ Pipfile
 Pipfile.lock
 
 config.py
+credentials.json
+token.json
