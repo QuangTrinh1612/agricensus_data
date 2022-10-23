@@ -1,4 +1,5 @@
 import agricensus_api
+import yahoo_finance_api
 import config
 import pandas as pd
 import numpy as np
@@ -10,11 +11,11 @@ def write_to_csv(df: pd.DataFrame, feed_type: str):
     
     # Based on feed_type to get file_name
     file_name_dict = {  
-        'daily_export': 'DailyExport',
-        'historical_export': 'HistoricalExport',
-        'specs_export': 'SpecsExport',
-
-        'test': 'Test'
+        'fw': 'FWHistoricalExport',
+        'freight': 'freightHistoricalExport',
+        'specs': 'SpecsExport',
+        'fxrate': 'FXRateExport',
+        'test': 'TestExport'
     }
     
     file_path = Path(f'Data/{file_name_dict[feed_type]}_{dt.today().year*10000+dt.today().month*100+dt.today().day}.csv')
@@ -32,10 +33,19 @@ def data_transformation(is_export_to_csv: bool = True, is_upload_to_gdrive: bool
     specs_df = agricensus_api.get_agricensus_data(config.token, 'specs_export', 'CSV')
 
     # SPM and ARG/BRZ Only
-    specs_df = specs_df[
-        specs_df['Market'].isin(['Corn', 'Soybean', 'Soymeal'])
-        & specs_df['Name'].str.contains('Argentina|Brazil') # Check China (Brazil)
-    ]
+    # specs_df = specs_df[
+    #     specs_df['Market'].isin(['Corn', 'Soybean', 'Soymeal'])
+    #     & specs_df['Name'].str.contains('Argentina|Brazil') # Check China (Brazil)
+    # ]
+
+    # 2022-10-23 REMOVE SOYBEAN, ADDED WHEAT, CRUSH MARGIN, FREIGHT
+    is_sbm = (specs_df['Market'] == 'Soymeal') & (specs_df['Name'].str.contains('Argentina|Brazil')) & (~specs_df['Name'].str.contains('China'))
+    is_corn = (specs_df['Market'] == 'Corn') & (specs_df['Name'].str.contains('Argentina|Brazil')) & (~specs_df['Name'].str.contains('China'))
+    is_wheat = (specs_df['Market'] == 'Wheat') & (specs_df['Name'].str.contains('AUS ASW|Ukraine FW'))
+    is_crush_margin = (specs_df['Market'] == 'Crush Margin') & (specs_df['Name'].str.contains('Brazil|Argentina|US')) & (~specs_df['Name'].str.contains('China'))
+    is_freight = (specs_df['Market'] == 'Freight') & (specs_df['Name'].str.contains('Brazil - Vietnam|ARG - NE Asia'))
+
+    specs_df = specs_df[is_sbm | is_corn | is_wheat | is_crush_margin | is_freight]
 
     full_df = pd.merge(tx_df, specs_df, how='inner', left_on='code', right_on='Price Code', validate='m:1')
 
@@ -44,9 +54,13 @@ def data_transformation(is_export_to_csv: bool = True, is_upload_to_gdrive: bool
 
     # MAIN TRANSFORMATION
     final_df['DATE OFFER'] = pd.to_datetime(full_df.date)
-    final_df['COMMODITY'] = np.where(full_df['Market'] == 'Corn', 'CORN',
-                            np.where(full_df['Market'].isin(['Soybean', 'Soymeal']), 'SBM', 'Others'))
     
+    # 2022-10-23 UPDATE AS SBM = Soymeal
+    # final_df['COMMODITY'] = np.where(full_df['Market'] == 'Corn', 'CORN',
+    #                         np.where(full_df['Market'].isin(['Soybean', 'Soymeal']), 'SBM', 'Others'))
+    
+    final_df['COMMODITY'] = np.where(full_df['Market'] == 'Soymeal', 'SBM', full_df['Market'].str.upper())
+
     # 20221017 - Change Source Data
     # final_df['comm'] = full_df['Name'].apply(lambda name: re.sub('M[1-9] ', '', name))
     final_df['COMM'] = full_df['Market'] + ' ' + full_df['Name'].apply(lambda name: re.sub(' M[1-9]', '', name)) + ' ' + full_df['Currency'] + '/' + \
@@ -56,10 +70,25 @@ def data_transformation(is_export_to_csv: bool = True, is_upload_to_gdrive: bool
                         np.where(full_df['Units'] == 'Short tons', 'st', full_df['Units']))))
     
     final_df['CURRENCY'] = full_df['Currency']
+    
     final_df['M_MONTH'] = full_df['shipment_delivery_month'] + ' ' + np.where(full_df['Structure'] == 'SP', 'M0', full_df['Structure'])
-    final_df['ORIGIN'] = np.where(full_df['Name'].str.contains('Argentina'), 'ARG', 'BRZ')
-    final_df['SELLER'] = np.where(full_df['Name'].str.contains('Argentina'), 'ARG', 'BRZ') # Need to check how to identify seller
-    final_df['REGION'] = 'SA' # Need to check - South America
+    
+    final_df['ORIGIN'] = np.where(full_df['Name'].str.contains('Argentina'), 'ARG',
+                        np.where(full_df['Name'].str.contains('Brazil'), 'BRA',
+                        np.where(full_df['Name'].str.contains('Ukraine'), 'UKR',
+                        np.where(full_df['Name'].str.contains('AUS|Australia'), 'AUS',
+                        np.where(full_df['Name'].str.contains('US'), 'USA', '')))))
+
+    final_df['REGION'] = np.where(full_df['Name'].str.contains('Argentina'), 'SA',
+                        np.where(full_df['Name'].str.contains('Brazil'), 'SA',
+                        np.where(full_df['Name'].str.contains('Ukraine'), 'EU',
+                        np.where(full_df['Name'].str.contains('AUS|Australia'), 'OC',
+                        np.where(full_df['Name'].str.contains('US'), 'NA', '')))))
+    
+    # 2022-10-23 UPDATE AS "AGRICENSUS"
+    # final_df['SELLER'] = np.where(full_df['Name'].str.contains('Argentina'), 'ARG', 'BRZ') # Need to check how to identify seller
+    
+    final_df['SELLER'] = 'Agricensus'
     final_df['PRICE_TYPE'] = 'CNF'
     final_df['NOTE'] = ''
     final_df['PRICE'] = full_df['value']
@@ -72,7 +101,7 @@ def data_transformation(is_export_to_csv: bool = True, is_upload_to_gdrive: bool
     final_df['UNIT PRICE'] = np.where(full_df['Units'] == 'bushel (corn)', 'basic',
                             np.where(full_df['Units'] == 'bushel (wheat/soy)', 'basic',
                             np.where(full_df['Units'] == 'Metric tonnes', 'flat',
-                            np.where(full_df['Units'] == 'Short tons', 'flat', 'Unknown'))))
+                            np.where(full_df['Units'] == 'Short tons', 'flat', ''))))
 
     final_df['SHIPMENT'] = pd.to_datetime('01-' + full_df['shipment_delivery_month'] + full_df['date'].str.slice(0,4))
     final_df.loc[final_df['SHIPMENT'] < final_df['DATE OFFER'], 'SHIPMENT'] = final_df['SHIPMENT'] + pd.DateOffset(years=1)
@@ -90,14 +119,21 @@ def data_transformation(is_export_to_csv: bool = True, is_upload_to_gdrive: bool
 
     final_df['DELIVERY'] = final_df['SHIPMENT'] + pd.DateOffset(months=2)
 
+    # 2022-10-23 ADDED FULL MONTH, INCOTERM
+    final_df['FULL_M_MONTH'] = final_df['SHIPMENT'].dt.strftime('%b-%Y')
+    final_df['INCOTERM'] = np.where(full_df['Name'].str.contains('FOB'), 'FOB',
+                            np.where(full_df['Name'].str.contains('CIF'), 'CIF',
+                            np.where(full_df['Name'].str.contains('CFR'), 'CFR', '')))
+
     # REORDER COLUMN IN FINAL DATAFRAME
     final_df = final_df[['DATE OFFER', 'SELLER', 'COMMODITY', 'ORIGIN', 'SHIPMENT', 'DELIVERY',
-                        'REGION', 'M_MONTH', 'PRICE_TYPE', 'NOTE', 'UNIT PRICE', 'PRICE', 'COMM', 'CURRENCY', 'LETTER']]
+                        'REGION', 'M_MONTH', 'PRICE_TYPE', 'NOTE', 'UNIT PRICE', 'PRICE', 'COMM', 'CURRENCY', 'LETTER', 'FULL_M_MONTH', 'INCOTERM']]
 
     if is_export_to_csv == True:
-        write_to_csv(final_df, 'historical_export')
-        # write_to_csv(final_df, 'daily_export')
-        # write_to_csv(specs_df, 'specs_export')
+        write_to_csv(final_df[final_df['COMMODITY'] != 'FREIGHT'], 'fw')
+        write_to_csv(final_df[final_df['COMMODITY'] == 'FREIGHT'], 'freight')
+        write_to_csv(specs_df, 'specs')
+        write_to_csv(yahoo_finance_api.get_fx_rate(), 'fxrate')
         # write_to_csv(full_df, 'test')
 
     return final_df
