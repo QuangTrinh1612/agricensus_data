@@ -6,7 +6,8 @@ import subprocess
 # subprocess.check_call([sys.executable, '-m', 'pipenv', 'install', 'google-api-python-client', 'oauth2client', 'requests', 'pandas'])
 # subprocess.check_call([sys.executable, '-m', 'pipenv', 'install', 'pandas'])
 # subprocess.check_call([sys.executable, '-m', 'pipenv', 'install', 'yfinance'])
-subprocess.check_call([sys.executable, '-m', 'pipenv', 'install', 'google-auth-oauthlib'])
+# subprocess.check_call([sys.executable, '-m', 'pipenv', 'install', 'google-auth-oauthlib'])
+subprocess.check_call([sys.executable, '-m', 'pipenv', 'graph'])
 
 # process output with an API in the subprocess module:
 # reqs = subprocess.check_output([sys.executable, '-m', 'pipenv', 'freeze'])

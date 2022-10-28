@@ -150,4 +150,4 @@ def data_transformation(is_export_to_csv: bool = True, is_upload_to_gdrive: bool
     return final_df
 
 if __name__ == '__main__':
-    data_transformation(is_export_to_csv = True, is_upload_to_gdrive = True)
+    data_transformation(is_export_to_csv = True, is_upload_to_gdrive = False)
